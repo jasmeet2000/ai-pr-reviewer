@@ -1,0 +1,62 @@
+name: AI PR Reviewer
+
+# ==============================================================================
+# UNVERIFIED / REFERENCE IMPLEMENTATION
+# This workflow relies on a paid Anthropic API key to run Claude inside a GitHub
+# Action (as Ollama cannot run natively on standard hosted runners). Due to the
+# project's strict free-only constraint, this specific workflow has NOT been
+# live-tested in CI. It serves as an architectural extension point demonstrating
+# how the reviewer can be integrated via GitHub Actions.
+# ==============================================================================
+
+# NOTE: Users should copy this file into their own repository's .github/workflows/ directory.
+# Prerequisites:
+# 1. Add ANTHROPIC_API_KEY as a Repository Secret in your GitHub settings.
+# 2. Add GITHUB_TOKEN permissions for Pull Requests (Write) to allow commenting.
+# 1. Add ANTHROPIC_API_KEY as a Repository Secret in your GitHub settings.
+# 2. Add GITHUB_TOKEN permissions for Pull Requests (Write) to allow commenting.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    # Optional: Prevent concurrent reviews on the same PR if a new commit is pushed quickly
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+      
+    steps:
+      - name: Checkout Reviewer Code
+        uses: actions/checkout@v4
+        with:
+          repository: your-org/ai-pr-reviewer # Point this to the fork or central repo holding the reviewer code
+          # For a real standalone action, this would be structured as a composite/docker action,
+          # but for the script usage, we check out the reviewer code itself.
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run AI PR Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python review_pr.py \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --provider claude \
+            --post-comment
